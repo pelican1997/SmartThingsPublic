@@ -14,7 +14,7 @@
  *
  */
 metadata {
-	definition (name: "PNE Z-Wave Lock", namespace: "smartthings", author: "SmartThings", minHubCoreVersion: '000.017.0012', executeCommandsLocally: false) {
+	definition (name: "PNE Z-Wave Lock", namespace: "pelican1997", author: "SmartThings", minHubCoreVersion: '000.017.0012', executeCommandsLocally: false) {
 		capability "Actuator"
 		capability "Lock"
 		capability "Polling"
