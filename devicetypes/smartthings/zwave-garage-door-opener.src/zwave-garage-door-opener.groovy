@@ -2,6 +2,7 @@
  *	Z-Wave Garage Door Opener
  *
  *	Copyright 2014 SmartThings
+ *      Philip merged in changes from Ron
  *
  *	Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *	in compliance with the License. You may obtain a copy of the License at:
@@ -14,14 +15,18 @@
  *
  */
 metadata {
-	definition (name: "Z-Wave Garage Door Opener", namespace: "smartthings", author: "SmartThings", runLocally: true, minHubCoreVersion: '000.017.0012', executeCommandsLocally: false) {
-		capability "Actuator"
-		capability "Door Control"
-		capability "Garage Door Control"
-		capability "Health Check"
-		capability "Contact Sensor"
-		capability "Refresh"
-		capability "Sensor"
+	definition (name: "PNE Z-Wave Garage Door Opener", namespace: "smartthings", author: "Philip ELcan", minHubCoreVersion: '000.017.0012', executeCommandsLocally: false) {
+        capability "Actuator"
+        capability "Door Control"
+        capability "Contact Sensor"
+        capability "Refresh"
+        capability "Sensor"
+        capability "Polling"
+        capability "Switch"
+        capability "Momentary"
+        capability "Relay Switch"
+        capability "Garage Door Control"
+        capability "Battery"
 
 		fingerprint deviceId: "0x4007", inClusters: "0x98"
 		fingerprint deviceId: "0x4006", inClusters: "0x98"
@@ -58,9 +63,26 @@ metadata {
 		standardTile("refresh", "device.door", inactiveLabel: false, decoration: "flat") {
 			state "default", label:'', action:"refresh.refresh", icon:"st.secondary.refresh"
 		}
+        standardTile("button", "device.switch", width: 1, height: 1, canChangeIcon: true) {
+            state "off", label: 'Off', action: "switch.on", icon: "st.switches.switch.off", backgroundColor: "#ffffff", nextState: "on"
+            state "on", label: 'On', action: "switch.off", icon: "st.switches.switch.on", backgroundColor: "#79b821", nextState: "off"
+        }
+        valueTile("battery", "device.battery", inactiveLabel: false, decoration: "flat") {
+            state "battery", label: 'Battery ${currentValue}%', unit: "%"
+        }
+        // Last lastBatteryStatus Tile
+        valueTile("lastBatteryStatus", "device.lastBatteryStatus", inactiveLabel: false, decoration: "flat") {
+            state "lastBatteryStatus", label:'${currentValue}', unit:""
+        }
+        valueTile("batteryReset", "device.battery", inactiveLabel: false, decoration: "flat") {
+            state "default", label: 'Battery\nReset', action: "batteryReset"
+        }
 
+        standardTile("version", "device.version", inactiveLabel: false, decoration: "flat") {
+            state "version", label: 'v2.2'
+        }
 		main "toggle"
-		details(["toggle", "open", "close", "refresh"])
+		details(["toggle", "open", "close", "button", "refresh", "lastBatteryStatus", "battery", "batteryReset", "version"])
 	}
 }
 
@@ -124,10 +146,12 @@ def zwaveEvent(physicalgraph.zwave.commands.securityv1.SecurityCommandsSupported
 def zwaveEvent(BarrierOperatorReport cmd) {
 	def result = []
 	def map = [ name: "door" ]
+    def switchMap = [name: "switch"]
 	switch (cmd.barrierState) {
 		case BarrierOperatorReport.BARRIER_STATE_CLOSED:
 			map.value = "closed"
 			result << createEvent(name: "contact", value: "closed", displayed: false)
+            result << createEvent(name: "switch", value: "off", displayed: false)
 			break
 		case BarrierOperatorReport.BARRIER_STATE_UNKNOWN_POSITION_MOVING_TO_CLOSE:
 			map.value = "closing"
@@ -143,6 +167,7 @@ def zwaveEvent(BarrierOperatorReport cmd) {
 		case BarrierOperatorReport.BARRIER_STATE_OPEN:
 			map.value = "open"
 			result << createEvent(name: "contact", value: "open", displayed: false)
+            result << createEvent(name: "switch", value: "on", displayed: false)
 			break
 	}
 	result + createEvent(map)
@@ -206,7 +231,11 @@ def zwaveEvent(physicalgraph.zwave.commands.notificationv3.NotificationReport cm
 				} else {
 					map.descriptionText = "$device.displayName door sensor has a low battery"
 				}
-				result << createEvent(name: "battery", value: 1, unit: "%", descriptionText: map.descriptionText)
+                result << createEvent(name: "battery", value: 1, descriptionText: map.descriptionText)
+                def now=new Date()
+                def tz = location.timeZone
+                def nowString = "Low:" + now.format("MMM/dd HH:mm",tz)
+                result << createEvent(name:"lastBatteryStatus", value:nowString, descriptionText: map.descriptionText)
 				break
 			case 0x4B:
 				map.descriptionText = "$device.displayName detected a short in wall station wires"
@@ -284,8 +313,17 @@ def zwaveEvent(physicalgraph.zwave.commands.applicationstatusv1.ApplicationBusy 
 	createEvent(displayed: true, descriptionText: "$device.displayName is busy, $msg")
 }
 
+def zwaveEvent(physicalgraph.zwave.commands.powerlevelv1.PowerlevelReport cmd) {
+    log.debug "Power Level Report cmd=$cmd"
+    createEvent(displayed: true, descriptionText: "$device.displayName rejected the last request")
+}
+
 def zwaveEvent(physicalgraph.zwave.commands.applicationstatusv1.ApplicationRejectedRequest cmd) {
 	createEvent(displayed: true, descriptionText: "$device.displayName rejected the last request")
+}
+
+def zwaveEvent(physicalgraph.zwave.commands.applicationcapabilityv1.CommandCommandClassNotSupported cmd) {
+    log.debug "Command Class Not Supported cmd:$cmd"
 }
 
 def zwaveEvent(physicalgraph.zwave.Command cmd) {
@@ -300,6 +338,16 @@ def close() {
 	secure(zwave.barrierOperatorV1.barrierOperatorSet(requestedBarrierState: BarrierOperatorSet.REQUESTED_BARRIER_STATE_CLOSE))
 }
 
+def on() {
+    log.debug "on() was called treat this like Open"
+    open()
+}
+
+def off() {
+    log.debug "off() was called treat like Close"
+    close()
+}
+
 /**
  * PING is used by Device-Watch in attempt to reach the Device
  * */
@@ -308,7 +356,54 @@ def ping() {
 }
 
 def refresh() {
-	secure(zwave.barrierOperatorV1.barrierOperatorGet())
+    //secure(zwave.barrierOperatorV1.barrierOperatorGet())
+    /* BatteryGet and NotificationGet not working */
+    log.debug "Issuing Refresh (barrier state, and version report to log)"
+    //log.debug "Preferences are set as follows"
+    //log.debug "enableSwitch:$enableSwitch"
+    secureSequence([
+                zwave.barrierOperatorV1.barrierOperatorGet()
+                ,zwave.versionV1.versionGet()
+                ,zwave.batteryV1.batteryGet()
+                ,zwave.powerlevelV1.powerlevelGet()
+                ,zwave.notificationV3.notificationGet()
+                //,zwave.notificationV3.notificationSupportedGet()
+        ], 4200)
+    /* */
+}
+
+def poll() {
+    secure(zwave.barrierOperatorV1.barrierOperatorGet())
+}
+
+def batteryReset() {
+    log.debug "Battery Reset"
+    def now=new Date()
+    def tz = location.timeZone
+    def nowString = "RESET:" + now.format("MMM/dd HH:mm",tz)
+    sendEvent("name": "battery", "value":100, "descriptionText":"Battery Reset to OK")
+    sendEvent("name":"lastBatteryStatus", "value":nowString)
+}
+
+def push() {
+
+    // get the current "door" attribute value
+    //
+    // For some reason, I can't use "device.doorState" or just "doorState".  Not sure why not.
+
+    def lastValue = device.latestValue("door");
+
+    // if its open, then close the door
+    if (lastValue == "open") {
+        return close()
+
+        // if its closed, then open the door
+    } else if (lastValue == "closed") {
+        return open()
+
+    } else {
+        log.debug "push() called when door state is $lastValue - there's nothing push() can do"
+    }
 }
 
 private secure(physicalgraph.zwave.Command cmd) {
