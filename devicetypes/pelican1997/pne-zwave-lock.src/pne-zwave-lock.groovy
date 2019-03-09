@@ -423,6 +423,8 @@ def zwaveEvent(physicalgraph.zwave.commands.alarmv2.AlarmReport cmd) {
  */
 private def handleAccessAlarmReport(cmd) {
 	log.trace "[DTH] Executing 'handleAccessAlarmReport' with cmd = $cmd"
+				log.debug "[PNE] handleAccessAlarmReport debug"
+				log.trace "[PNE] handleAccessAlarmReport trace"
 	def result = []
 	def map = null
 	def codeID, changeType, lockCodes, codeName
