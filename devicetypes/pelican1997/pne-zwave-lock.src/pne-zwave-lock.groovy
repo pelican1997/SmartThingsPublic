@@ -463,7 +463,7 @@ private def handleAccessAlarmReport(cmd) {
 				map.descriptionText = "Locked manually"
 				map.data = [ method: "keypad" ]
 				log.debug "[PNE] Creating event handleAccessAlarmReport"
-				result << createEvent(name: "locks", value: "locked by keypad", displayed: false)
+				result << createEvent(name: "lock", value: "locked by keypad", displayed: false)
 			}
 			break
 		case 6: // Unlocked with keypad
