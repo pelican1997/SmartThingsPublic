@@ -458,6 +458,7 @@ private def handleAccessAlarmReport(cmd) {
 				// locked by pressing the Schlage button
 				map.descriptionText = "Locked manually"
 				map.data = [ method: "keypad" ]
+				log.debug "[PNE] Creating event handleAccessAlarmReport"
 				result << createEvent(name: "locks", value: "locked by keypad", displayed: false)
 			}
 			break
@@ -569,6 +570,7 @@ private def handleAccessAlarmReport(cmd) {
 		} else {
 			map.data = [ lockName: deviceName ]
 		}
+		log.debug "[PNE] trace 573"
 		result << createEvent(map)
 	}
 	result = result.flatten()
