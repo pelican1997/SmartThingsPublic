@@ -449,7 +449,9 @@ private def handleAccessAlarmReport(cmd) {
 			map.data = [ method: "command" ]
 			break
 		case 5: // Locked with keypad
+			log.debug "[PNE] handleAccessAlarmReport lock w/ keypad"
 			if (cmd.eventParameter || cmd.alarmLevel) {
+				log.debug "[PNE] handleAccessAlarmReport -if"
 				codeID = readCodeSlotId(cmd)
 				codeName = getCodeName(lockCodes, codeID)
 				map.descriptionText = "Locked by \"$codeName\""
